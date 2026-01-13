@@ -500,6 +500,7 @@ const PropertyPortal: React.FC<PropertyPortalProps> = ({
                           <option value="INSTALLMENT">INSTALLMENT</option>
                           <option value="BALLOTING">BALLOTING</option>
                           <option value="POSSESSION">POSSESSION</option>
+                          <option value="PLOTTING">PLOTTING</option>
                           <option value="TRANSFER">TRANSFER</option>
                           <option value="OTHER">OTHER</option>
                         </select>
@@ -543,6 +544,7 @@ const PropertyPortal: React.FC<PropertyPortalProps> = ({
                           <option value="INSTALLMENT">INSTALLMENT</option>
                           <option value="BALLOTING">BALLOTING</option>
                           <option value="POSSESSION">POSSESSION</option>
+                          <option value="PLOTTING">PLOTTING</option>
                           <option value="TRANSFER">TRANSFER</option>
                           <option value="OTHER">OTHER</option>
                         </select>

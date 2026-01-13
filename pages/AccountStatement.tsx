@@ -42,6 +42,12 @@ const AccountStatement: React.FC<Props> = ({ file, onBack }) => {
     } catch (e) { return null; }
   };
 
+  // Helper to determine if date should be hidden based on installment type
+  const shouldHideDate = (type: string) => {
+    const t = (type || '').toUpperCase();
+    return t.includes('POSSESSION') || t.includes('PLOTTING') || t.includes('BALLOTING');
+  };
+
   const groupedTransactions = useMemo(() => {
     const paymentPlanGroups: Record<number, { 
       receivableRow: Transaction, 
@@ -135,17 +141,14 @@ const AccountStatement: React.FC<Props> = ({ file, onBack }) => {
     if (!statementRef.current) return;
     setIsDownloading(true);
     try {
-      // html2canvas config to capture full hidden/scaled height
       const canvas = await html2canvas(statementRef.current, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
-        // Ensure we capture the full scroll height even if the element is clipped in the UI
         height: statementRef.current.scrollHeight,
         windowHeight: statementRef.current.scrollHeight,
         onclone: (clonedDoc) => {
-          // Find the cloned element and force it to be visible/unscaled for accurate capture
           const el = clonedDoc.querySelector('[data-statement-container]');
           if (el) (el as HTMLElement).style.transform = 'none';
         }
@@ -154,18 +157,16 @@ const AccountStatement: React.FC<Props> = ({ file, onBack }) => {
       const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF('p', 'mm', 'a4');
       
-      const imgWidth = 210; // A4 Width in mm
-      const pageHeight = 297; // A4 Height in mm
+      const imgWidth = 210; 
+      const pageHeight = 297; 
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       
       let heightLeft = imgHeight;
       let position = 0;
 
-      // Add first page
       pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
-      // Add additional pages if content overflows
       while (heightLeft > 0) {
         position = heightLeft - imgHeight;
         pdf.addPage();
@@ -302,14 +303,12 @@ const AccountStatement: React.FC<Props> = ({ file, onBack }) => {
                 const isFullyPaid = totalPaidForThisInt >= recVal;
                 const dueDate = parseSAPDate(rec.duedate);
                 const shouldHighlightGroup = (dueDate && dueDate < today && !isFullyPaid);
-                
-                // User Requirement: Hide due date for POSSESSION and BALLOTING
-                const displayDueDate = (rec.u_intname === 'POSSESSION' || rec.u_intname === 'BALLOTING') ? '' : rec.duedate;
+                const hideDate = shouldHideDate(rec.u_intname);
 
                 if (group.receipts.length === 0) {
                   return (
                     <tr key={groupIdx} className={`border-b border-gray-200 ${shouldHighlightGroup ? 'bg-[#ffff00]' : ''}`}>
-                      <td className="border-x border-gray-200 text-center py-1">{displayDueDate}</td>
+                      <td className="border-x border-gray-200 text-center py-1">{hideDate ? '-' : rec.duedate}</td>
                       <td className="border-r border-gray-200 text-center py-1">{rec.u_intno}</td>
                       <td className="border-r border-gray-200 pl-2 uppercase">{rec.u_intname}</td>
                       <td className="border-r border-gray-200 text-right pr-1">{format(recVal)}</td>
@@ -330,7 +329,7 @@ const AccountStatement: React.FC<Props> = ({ file, onBack }) => {
                   const isLastReceiptOfInstallment = rIdx === group.receipts.length - 1;
                   return (
                     <tr key={`${groupIdx}-${rIdx}`} className={`border-b border-gray-200 ${shouldHighlightGroup ? 'bg-[#ffff00]' : ''}`}>
-                      <td className="border-x border-gray-200 text-center py-1">{rIdx === 0 ? displayDueDate : ''}</td>
+                      <td className="border-x border-gray-200 text-center py-1">{rIdx === 0 ? (hideDate ? '-' : rec.duedate) : ''}</td>
                       <td className="border-r border-gray-200 text-center py-1">{rIdx === 0 ? rec.u_intno : ''}</td>
                       <td className="border-r border-gray-200 pl-2 uppercase">{rIdx === 0 ? rec.u_intname : ''}</td>
                       <td className="border-r border-gray-200 text-right pr-1">{rIdx === 0 ? format(recVal) : ''}</td>
@@ -353,13 +352,10 @@ const AccountStatement: React.FC<Props> = ({ file, onBack }) => {
                 const dueDate = parseSAPDate(t.duedate);
                 const osBal = t.balduedeb || 0;
                 const highlight = dueDate && dueDate < today && osBal > 0;
-                
-                // Apply the same logic for other transactions if applicable
-                const displayDueDate = (t.u_intname === 'POSSESSION' || t.u_intname === 'BALLOTING') ? '' : t.duedate;
-
+                const hideDate = shouldHideDate(t.u_intname);
                 return (
                   <tr key={`other-${idx}`} className={`border-b border-gray-200 ${highlight ? 'bg-[#ffff00]' : ''}`}>
-                    <td className="border-x border-gray-200 text-center py-1">{displayDueDate}</td>
+                    <td className="border-x border-gray-200 text-center py-1">{hideDate ? '-' : t.duedate}</td>
                     <td className="border-r border-gray-200 text-center py-1">-</td>
                     <td className="border-r border-gray-200 pl-2 uppercase">{t.u_intname || 'Other'}</td>
                     <td className="border-r border-gray-200 text-right pr-1">{format(t.receivable)}</td>
