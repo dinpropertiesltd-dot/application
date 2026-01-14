@@ -5,19 +5,12 @@ import {
   Users, 
   Search, 
   ShieldCheck, 
-  Zap, 
-  Eye, 
-  Settings,
   UploadCloud,
   RefreshCw,
-  Edit,
-  X,
-  Plus,
-  Trash2,
-  Save,
-  Bell,
   FileText,
-  AlertTriangle
+  Database,
+  Trash2,
+  HardDrive
 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -37,16 +30,11 @@ interface AdminPortalProps {
 
 const AdminPortal: React.FC<AdminPortalProps> = ({ 
   users, 
-  setUsers, 
-  notices,
-  setNotices,
   allFiles, 
   onImportFullDatabase,
   onResetDatabase,
-  onSwitchToChat,
 }) => {
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'USERS' | 'CONTENT' | 'SYSTEM'>('OVERVIEW');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'USERS' | 'SYSTEM'>('OVERVIEW');
   const [isProcessing, setIsProcessing] = useState(false);
   const masterSyncRef = useRef<HTMLInputElement>(null);
 
@@ -56,8 +44,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
       f.transactions.forEach(t => collection += (t.amount_paid || 0));
       os += f.balance;
     });
-    return { collection, os, count: allFiles.length };
-  }, [allFiles]);
+    return { collection, os, count: allFiles.length, users: users.length };
+  }, [allFiles, users]);
 
   const parseCSVLine = (line: string): string[] => {
     const columns: string[] = [];
@@ -99,7 +87,7 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
 
         const parseVal = (v: any) => {
           if (!v || v.toUpperCase() === 'NULL' || v === '-') return 0;
-          return parseFloat(v.replace(/,/g, '').replace(/[()]/g, '')) || 0;
+          return parseFloat(v.toString().replace(/,/g, '').replace(/[()]/g, '')) || 0;
         };
 
         const userMap = new Map<string, User>();
@@ -136,7 +124,6 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
               cellNo: col(cols, ['ocell', 'cellno']) || '-',
               regDate: col(cols, ['otrfdate', 'regdate']) || '-',
               address: col(cols, ['opraddress', 'address']) || '-',
-              // USER REQUESTED MAPPING: Plot | Block | Park | Corner | MB
               plotNo: col(cols, ['plot', 'plotno', 'u_plotno']) || '-',
               block: col(cols, ['block', 'u_block']) || '-',
               park: col(cols, ['park', 'u_park']) || '-',
@@ -158,7 +145,7 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
             duedate: col(cols, ['duedate']) || '-',
             receivable: parseVal(col(cols, ['receivable'])),
             u_intno: parseVal(col(cols, ['u_intno'])),
-            u_intname: col(cols, ['u_intname']) || '',
+            u_intname: col(cols, ['u_intname']) || 'INSTALLMENT',
             transtype: '13', itemcode: itemCode, plottype: 'Res', currency: 'PKR',
             description: '', doctotal: prop.plotValue, status: 'Synced',
             balance: 0, balduedeb: osVal, paysrc: 0, amount_paid: paidVal,
@@ -173,8 +160,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
             files: Array.from(fileMap.values()) 
           }, true);
         }
-        alert("Master Sync Complete: All records locked to local registry.");
-      } catch (err) { alert("Format Error: Verify CSV columns."); }
+        alert(`Registry Sync Successful: ${fileMap.size} properties registered.`);
+      } catch (err) { alert("Format Error: Verify CSV headers match SAP standard."); }
       finally { setIsProcessing(false); }
     };
     reader.readAsText(file);
@@ -183,10 +170,13 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
   return (
     <div className="space-y-10 animate-in fade-in duration-700">
       <div className="flex justify-between items-center">
-        <h1 className="text-4xl font-black uppercase tracking-tighter">Supervisors Node</h1>
+        <div>
+          <h1 className="text-4xl font-black uppercase tracking-tighter">Command Center</h1>
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Authorized Supervisor Access Only</p>
+        </div>
         <div className="flex bg-slate-100 p-1 rounded-2xl">
-          {['OVERVIEW', 'USERS', 'CONTENT', 'SYSTEM'].map(t => (
-            <button key={t} onClick={() => setActiveTab(t as any)} className={`px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === t ? 'bg-indigo-900 text-white shadow-lg' : 'text-slate-500'}`}>{t}</button>
+          {['OVERVIEW', 'USERS', 'SYSTEM'].map(t => (
+            <button key={t} onClick={() => setActiveTab(t as any)} className={`px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === t ? 'bg-indigo-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}>{t}</button>
           ))}
         </div>
       </div>
@@ -194,32 +184,67 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
       {activeTab === 'OVERVIEW' && (
         <div className="space-y-10">
           <div className="bg-indigo-950 p-12 rounded-[3rem] text-white shadow-2xl relative overflow-hidden">
-            <div className="relative z-10 flex items-center justify-between">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full translate-x-1/2 -translate-y-1/2 blur-3xl"></div>
+            <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-10">
               <div className="flex items-center gap-8">
-                <div className="w-20 h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center"><UploadCloud size={32} /></div>
-                <div><h2 className="text-3xl font-black uppercase">Registry Uplink</h2><p className="text-indigo-400 text-[11px] font-black tracking-widest mt-1">SECURE SAP TRANSACTION SYNC</p></div>
+                <div className="w-20 h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-indigo-600/20"><UploadCloud size={32} /></div>
+                <div>
+                  <h2 className="text-3xl font-black uppercase leading-tight">Registry Master Sync</h2>
+                  <p className="text-indigo-400 text-[11px] font-black tracking-[0.3em] mt-2 uppercase">Secure SAP Transaction Link</p>
+                </div>
               </div>
-              <button onClick={() => masterSyncRef.current?.click()} className="bg-white text-indigo-900 px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-4 hover:scale-105 transition-all">
-                {isProcessing ? <RefreshCw className="animate-spin" /> : <FileText />}
-                Process Registry CSV
+              <button 
+                onClick={() => masterSyncRef.current?.click()} 
+                disabled={isProcessing}
+                className="w-full lg:w-auto bg-white text-indigo-900 px-12 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-4"
+              >
+                {isProcessing ? <RefreshCw className="animate-spin" /> : <Database size={20} />}
+                Process Global CSV
               </button>
               <input ref={masterSyncRef} type="file" className="hidden" accept=".csv" onChange={handleMasterSync} />
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-4">
-             <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm"><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Total Files</p><h4 className="text-2xl font-black">{stats.count}</h4></div>
-             <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm"><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Collection</p><h4 className="text-2xl font-black text-emerald-600">PKR {stats.collection.toLocaleString()}</h4></div>
-             <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm"><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Total O/S</p><h4 className="text-2xl font-black text-rose-600">PKR {stats.os.toLocaleString()}</h4></div>
-             <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm"><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">System Load</p><h4 className="text-2xl font-black text-indigo-600">OPTIMAL</h4></div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+             <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><HardDrive size={14} /> Global Records</p>
+                <h4 className="text-3xl font-black text-slate-900">{stats.count} Assets</h4>
+             </div>
+             <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Users size={14} /> Registered Members</p>
+                <h4 className="text-3xl font-black text-slate-900">{stats.users} Entities</h4>
+             </div>
+             <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-6 flex items-center gap-2"><RefreshCw size={14} /> Inbound Total</p>
+                <h4 className="text-3xl font-black text-emerald-600">PKR {Math.round(stats.collection).toLocaleString()}</h4>
+             </div>
+             <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-6 flex items-center gap-2"><FileText size={14} /> Active Balance</p>
+                <h4 className="text-3xl font-black text-rose-600">PKR {Math.round(stats.os).toLocaleString()}</h4>
+             </div>
           </div>
         </div>
       )}
       
       {activeTab === 'SYSTEM' && (
-        <div className="bg-white rounded-[3rem] p-12 border shadow-2xl space-y-8">
-           <h3 className="text-2xl font-black uppercase">Data Maintenance</h3>
-           <div className="flex gap-4">
-              <button onClick={onResetDatabase} className="bg-rose-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px]">Wipe Local Cache</button>
+        <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-2xl space-y-12">
+           <div>
+              <h3 className="text-2xl font-black uppercase text-slate-900">Registry Maintenance</h3>
+              <p className="text-slate-500 font-medium mt-1">Terminal-level data management and hard reset operations.</p>
+           </div>
+           
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="p-10 bg-slate-50 rounded-[2.5rem] border border-slate-200">
+                 <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 mb-4">Hard Reset Node</h4>
+                 <p className="text-[11px] text-slate-500 font-medium leading-relaxed mb-8">This will purge the local IndexedDB cache and force a reload from the factory mock records. Use this if the terminal synchronization becomes corrupted.</p>
+                 <button onClick={onResetDatabase} className="w-full bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-rose-600/20 transition-all flex items-center justify-center gap-3"><Trash2 size={16} /> Wipe Local Registry</button>
+              </div>
+
+              <div className="p-10 bg-indigo-50 rounded-[2.5rem] border border-indigo-100">
+                 <h4 className="text-sm font-black uppercase tracking-widest text-indigo-900 mb-4">Sync Integrity Check</h4>
+                 <p className="text-[11px] text-indigo-700 font-medium leading-relaxed mb-8">Force a manual verification between local assets and cloud synchronization nodes. This ensures all member portals are showing the same data.</p>
+                 <button onClick={() => window.location.reload()} className="w-full bg-indigo-900 hover:bg-black text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-indigo-900/20 transition-all flex items-center justify-center gap-3"><RefreshCw size={16} /> Re-verify Node Link</button>
+              </div>
            </div>
         </div>
       )}
