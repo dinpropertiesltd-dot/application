@@ -13,7 +13,10 @@ import {
   UserPlus,
   FilePlus,
   ArrowRight,
-  Info
+  Info,
+  Download,
+  FileSpreadsheet,
+  MapPin
 } from 'lucide-react';
 
 interface PropertyPortalProps {
@@ -53,6 +56,66 @@ const PropertyPortal: React.FC<PropertyPortalProps> = ({
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR', maximumFractionDigits: 0 }).format(val);
+  };
+
+  const handleExportRegistry = () => {
+    if (allFiles.length === 0) return;
+    
+    // Define Headers matching standard Excel layout
+    const headers = [
+      'File Number',
+      'Owner Name',
+      'Father Name',
+      'CNIC',
+      'Cell No',
+      'Plot Size',
+      'Plot',
+      'Block',
+      'Park',
+      'Corner',
+      'MB',
+      'Total Value (PKR)',
+      'Payment Received (PKR)',
+      'Current Balance (PKR)',
+      'Reg Date',
+      'Address'
+    ];
+
+    // Map Data Rows
+    const rows = allFiles.map(f => [
+      `"${f.fileNo}"`,
+      `"${f.ownerName}"`,
+      `"${f.fatherName}"`,
+      `"${f.ownerCNIC}"`,
+      `"${f.cellNo}"`,
+      `"${f.plotSize}"`,
+      `"${f.plotNo}"`,
+      `"${f.block}"`,
+      `"${f.park}"`,
+      `"${f.corner}"`,
+      `"${f.mainBoulevard}"`,
+      f.plotValue,
+      f.paymentReceived,
+      f.balance,
+      `"${f.regDate}"`,
+      `"${f.address.replace(/\n/g, ' ')}"`
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `DIN_Property_Registry_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const startEditLedger = (file: PropertyFile) => {
@@ -181,12 +244,20 @@ const PropertyPortal: React.FC<PropertyPortalProps> = ({
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight uppercase">Property Registry</h1>
           <p className="text-slate-500 font-medium mt-1 uppercase tracking-widest text-[10px]">Asset Ledger & Member Management</p>
         </div>
-        <button 
-          onClick={() => setIsCreatingFile(true)}
-          className="bg-slate-900 text-white hover:bg-black px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl shadow-slate-900/10 flex items-center justify-center gap-3 active:scale-95 self-start"
-        >
-          <FilePlus size={18} /> New Property File
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleExportRegistry}
+            className="hidden sm:flex items-center gap-2 px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+          >
+            <FileSpreadsheet size={18} /> Export Registry
+          </button>
+          <button 
+            onClick={() => setIsCreatingFile(true)}
+            className="bg-slate-900 text-white hover:bg-black px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl shadow-slate-900/10 flex items-center justify-center gap-3 active:scale-95"
+          >
+            <FilePlus size={18} /> New Property File
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-[2rem] sm:rounded-[3.5rem] shadow-2xl border border-slate-200 overflow-hidden">
@@ -253,6 +324,12 @@ const PropertyPortal: React.FC<PropertyPortalProps> = ({
         </div>
 
         <div className="lg:hidden p-4 sm:p-6 space-y-4">
+          <button 
+            onClick={handleExportRegistry}
+            className="w-full py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-sm mb-4"
+          >
+            <FileSpreadsheet size={16} /> Export CSV List
+          </button>
           {filteredInventory.map(f => (
             <div key={f.fileNo} className="bg-slate-50 p-6 rounded-3xl border border-slate-200 space-y-6">
               <div className="flex justify-between items-start">
@@ -274,7 +351,7 @@ const PropertyPortal: React.FC<PropertyPortalProps> = ({
       {/* Creation Modal */}
       {isCreatingFile && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 backdrop-blur-md overflow-hidden lg:p-4">
-          <div className="bg-white lg:rounded-[3.5rem] w-full max-w-4xl h-full lg:h-auto lg:max-h-[95vh] shadow-2xl flex flex-col border border-white/20 animate-in zoom-in duration-300">
+          <div className="bg-white lg:rounded-[3.5rem] w-full max-w-5xl h-full lg:h-auto lg:max-h-[95vh] shadow-2xl flex flex-col border border-white/20 animate-in zoom-in duration-300">
             <div className="p-8 border-b bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-6">
                 <div className="w-16 h-16 bg-slate-900 text-white rounded-3xl flex items-center justify-center shadow-2xl shadow-slate-900/20">
@@ -292,67 +369,122 @@ const PropertyPortal: React.FC<PropertyPortalProps> = ({
 
             <form onSubmit={handleCreateFile} className="flex-1 overflow-y-auto custom-scrollbar p-10">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div className="space-y-6">
-                  <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] flex items-center gap-2">
-                    <Building size={14} /> Asset Specifications
-                  </h3>
-                  
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">File Number (Item Code)</label>
-                    <input 
-                      required
-                      type="text" 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold uppercase outline-none focus:ring-8 focus:ring-slate-900/5 transition-all"
-                      value={newFileData.fileNo}
-                      onChange={e => setNewFileData({...newFileData, fileNo: e.target.value.toUpperCase()})}
-                      placeholder="e.g. DGFD1-0XXXX"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-10">
+                  <div className="space-y-6">
+                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] flex items-center gap-2">
+                      <Building size={14} /> Asset Specifications
+                    </h3>
+                    
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Plot Size</label>
-                      <select 
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold uppercase outline-none"
-                        value={newFileData.plotSize}
-                        onChange={e => setNewFileData({...newFileData, plotSize: e.target.value})}
-                      >
-                        <option value="5 Marla-Residential">5 Marla-Residential</option>
-                        <option value="10 Marla-Residential">10 Marla-Residential</option>
-                        <option value="1 Kanal-Residential">1 Kanal-Residential</option>
-                        <option value="4 Marla-Commercial">4 Marla-Commercial</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Plot Value (PKR)</label>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">File Number (Item Code)</label>
                       <input 
                         required
-                        type="number" 
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
-                        value={newFileData.plotValue || ''}
-                        onChange={e => setNewFileData({...newFileData, plotValue: parseInt(e.target.value)})}
+                        type="text" 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold uppercase outline-none focus:ring-8 focus:ring-slate-900/5 transition-all"
+                        value={newFileData.fileNo}
+                        onChange={e => setNewFileData({...newFileData, fileNo: e.target.value.toUpperCase()})}
+                        placeholder="e.g. DGFD1-0XXXX"
                       />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Plot Size</label>
+                        <select 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold uppercase outline-none"
+                          value={newFileData.plotSize}
+                          onChange={e => setNewFileData({...newFileData, plotSize: e.target.value})}
+                        >
+                          <option value="5 Marla-Residential">5 Marla-Residential</option>
+                          <option value="10 Marla-Residential">10 Marla-Residential</option>
+                          <option value="1 Kanal-Residential">1 Kanal-Residential</option>
+                          <option value="4 Marla-Commercial">4 Marla-Commercial</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Plot Value (PKR)</label>
+                        <input 
+                          required
+                          type="number" 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
+                          value={newFileData.plotValue || ''}
+                          onChange={e => setNewFileData({...newFileData, plotValue: parseInt(e.target.value)})}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Reg Date</label>
+                        <input 
+                          type="text" 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
+                          value={newFileData.regDate}
+                          onChange={e => setNewFileData({...newFileData, regDate: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Currency No</label>
+                        <input 
+                          type="text" 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
+                          value={newFileData.currencyNo}
+                          onChange={e => setNewFileData({...newFileData, currencyNo: e.target.value})}
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Reg Date</label>
-                      <input 
-                        type="text" 
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
-                        value={newFileData.regDate}
-                        onChange={e => setNewFileData({...newFileData, regDate: e.target.value})}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Currency No</label>
-                      <input 
-                        type="text" 
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
-                        value={newFileData.currencyNo}
-                        onChange={e => setNewFileData({...newFileData, currencyNo: e.target.value})}
-                      />
+                  <div className="space-y-6">
+                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] flex items-center gap-2">
+                      <MapPin size={14} /> Location Details
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Plot</label>
+                        <input 
+                          type="text" 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
+                          value={newFileData.plotNo}
+                          onChange={e => setNewFileData({...newFileData, plotNo: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Block</label>
+                        <input 
+                          type="text" 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
+                          value={newFileData.block}
+                          onChange={e => setNewFileData({...newFileData, block: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Park</label>
+                        <input 
+                          type="text" 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
+                          value={newFileData.park}
+                          onChange={e => setNewFileData({...newFileData, park: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Corner</label>
+                        <input 
+                          type="text" 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
+                          value={newFileData.corner}
+                          onChange={e => setNewFileData({...newFileData, corner: e.target.value})}
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">MB (Main Boulevard)</label>
+                        <input 
+                          type="text" 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold outline-none"
+                          value={newFileData.mainBoulevard}
+                          onChange={e => setNewFileData({...newFileData, mainBoulevard: e.target.value})}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -188,7 +188,12 @@ const AdminPortal: React.FC<AdminPortalProps> = ({
               cellNo: col(cols, ['ocell', 'cellno', 'cell_no']) || '-',
               regDate: col(cols, ['otrfdate', 'regdate']) || '-',
               address: col(cols, ['opraddress', 'address', 'owner_address']) || '-',
-              plotNo: '-', block: '-', park: '-', corner: '-', mainBoulevard: '-',
+              // LOCATION MAPPING: Precise detection based on user provided Excel headers
+              plotNo: col(cols, ['plot', 'plotno', 'u_plotno']) || '-',
+              block: col(cols, ['block', 'u_block']) || '-',
+              park: col(cols, ['park', 'u_park']) || '-',
+              corner: col(cols, ['corner', 'u_corner', 'is_corner']) || '-',
+              mainBoulevard: col(cols, ['mb', 'mainboulevard', 'main_boulevard', 'u_mainbu']) || '-',
               transactions: []
             });
           }
