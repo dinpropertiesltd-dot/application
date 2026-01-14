@@ -36,13 +36,13 @@ import AIChatAssistant from './pages/AIChatAssistant';
 import Profile from './pages/Profile';
 
 // --- Ultra-Robust Persistent Storage (IndexedDB) ---
-const DB_NAME = 'DIN_PORTAL_V2';
+const DB_NAME = 'DIN_PORTAL_V3';
 const STORE_NAME = 'registry_data';
 
 const AsyncStorage = {
   getDB: (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, 2);
+      const request = indexedDB.open(DB_NAME, 1);
       request.onupgradeneeded = (e: any) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -59,11 +59,11 @@ const AsyncStorage = {
       return new Promise((resolve, reject) => {
         const transaction = db.transaction(STORE_NAME, 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
-        store.put(JSON.parse(JSON.stringify(value)), key); // Deep clone to break React proxies
+        store.put(JSON.parse(JSON.stringify(value)), key);
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       });
-    } catch (e) { console.error("Storage Critical Failure:", e); }
+    } catch (e) { console.error("Persistence Failure:", e); }
   },
   getItem: async (key: string): Promise<any> => {
     try {
@@ -97,7 +97,7 @@ const App: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<PropertyFile | null>(null);
   const [initialChatPartnerId, setInitialChatPartnerId] = useState<string | null>(null);
 
-  // 1. BOOT SEQUENCE: Load everything from Local Storage first
+  // 1. PRIMARY BOOT SEQUENCE
   useEffect(() => {
     const bootstrap = async () => {
       setIsLoading(true);
@@ -107,13 +107,11 @@ const App: React.FC = () => {
         const localNotices = await AsyncStorage.getItem('notices');
         const localMessages = await AsyncStorage.getItem('messages');
 
-        // Set state from local or fall back to MOCK if local is empty
         setUsers(localUsers || MOCK_USERS);
         setAllFiles(localFiles || MOCK_FILES);
         setNotices(localNotices || MOCK_NOTICES);
         setMessages(localMessages || MOCK_MESSAGES);
 
-        // Restore Session
         const sessionStr = sessionStorage.getItem('DIN_SESSION_USER');
         if (sessionStr) {
           const savedSession = JSON.parse(sessionStr);
@@ -121,16 +119,14 @@ const App: React.FC = () => {
           if (activeUser) setUser(activeUser);
         }
 
-        // Try to fetch updates from Cloud in background
         if (isCloudEnabled && supabase) {
           const { data: cloudUsers } = await supabase.from('profiles').select('*');
           const { data: cloudFiles } = await supabase.from('property_files').select('*');
-          
-          if (cloudUsers && cloudUsers.length > 0) setUsers(cloudUsers);
-          if (cloudFiles && cloudFiles.length > 0) setAllFiles(cloudFiles);
+          if (cloudUsers?.length) setUsers(cloudUsers);
+          if (cloudFiles?.length) setAllFiles(cloudFiles);
         }
       } catch (err) {
-        console.error("Boot Error:", err);
+        console.error("Registry Load Error:", err);
       } finally {
         setIsLoading(false);
       }
@@ -138,26 +134,18 @@ const App: React.FC = () => {
     bootstrap();
   }, []);
 
-  // 2. AUTO-SAVE OBSERVER: Guarantees persistence on every state change
+  // 2. CRITICAL AUTO-PERSISTENCE OBSERVER
   useEffect(() => {
     if (!isLoading) {
-      const persist = async () => {
+      const commitRegistry = async () => {
         await AsyncStorage.setItem('users', users);
         await AsyncStorage.setItem('files', allFiles);
         await AsyncStorage.setItem('notices', notices);
         await AsyncStorage.setItem('messages', messages);
       };
-      persist();
+      commitRegistry();
     }
   }, [users, allFiles, notices, messages, isLoading]);
-
-  const handleUpdateUsers = (u: User[]) => setUsers(u);
-  const handleUpdateFiles = (f: PropertyFile[]) => setAllFiles(f);
-  const handleUpdateNotices = (n: Notice[]) => setNotices(n);
-  const handleUpdateMessages = (updater: Message[] | ((prev: Message[]) => Message[])) => {
-    const next = typeof updater === 'function' ? updater(messages) : updater;
-    setMessages(next);
-  };
 
   const syncToCloud = useCallback(async (table: string, data: any) => {
     if (!isCloudEnabled || !supabase) return;
@@ -165,22 +153,25 @@ const App: React.FC = () => {
     try {
       const dbTable = table === 'users' ? 'profiles' : table === 'files' ? 'property_files' : table;
       await supabase.from(dbTable).upsert(JSON.parse(JSON.stringify(data)));
-    } catch (err) { 
-      console.error(`Cloud Sync Error:`, err); 
-    } finally { 
-      setTimeout(() => setIsSyncing(false), 500); 
-    }
+    } catch (err) { console.error(`Sync Fail:`, err); }
+    finally { setTimeout(() => setIsSyncing(false), 500); }
   }, []);
+
+  const handleUpdateUsers = (u: User[]) => { setUsers(u); syncToCloud('users', u); };
+  const handleUpdateFiles = (f: PropertyFile[]) => { setAllFiles(f); syncToCloud('files', f); };
+  const handleUpdateNotices = (n: Notice[]) => { setNotices(n); syncToCloud('notices', n); };
+  const handleUpdateMessages = (updater: Message[] | ((prev: Message[]) => Message[])) => {
+    const next = typeof updater === 'function' ? updater(messages) : updater;
+    setMessages(next);
+    syncToCloud('messages', next);
+  };
 
   const handleMassImport = useCallback(async (data: { users: User[], files: PropertyFile[] }, isDestructive?: boolean) => {
     setIsSyncing(true);
-    let nextUsers = [...users];
-    let nextFiles = [...allFiles];
+    let nextUsers = isDestructive ? data.users : [...users];
+    let nextFiles = isDestructive ? data.files : [...allFiles];
 
-    if (isDestructive) {
-      nextUsers = data.users;
-      nextFiles = data.files;
-    } else {
+    if (!isDestructive) {
       const userMap = new Map(nextUsers.map(u => [u.cnic.replace(/[^0-9X]/g, ''), u]));
       data.users.forEach(u => userMap.set(u.cnic.replace(/[^0-9X]/g, ''), u));
       nextUsers = Array.from(userMap.values());
@@ -190,28 +181,26 @@ const App: React.FC = () => {
       nextFiles = Array.from(fileMap.values());
     }
 
-    // Blocking local save first to ensure refresh doesn't kill it
-    await AsyncStorage.setItem('users', nextUsers);
-    await AsyncStorage.setItem('files', nextFiles);
-    
     setUsers(nextUsers);
     setAllFiles(nextFiles);
     
-    // Non-blocking cloud sync
+    // Explicit wait for local storage before potential refresh
+    await AsyncStorage.setItem('users', nextUsers);
+    await AsyncStorage.setItem('files', nextFiles);
+    
     syncToCloud('users', nextUsers);
     syncToCloud('files', nextFiles);
-    
     setIsSyncing(false);
   }, [users, allFiles, syncToCloud]);
 
   const handleResetDatabase = async () => {
-    if (!window.confirm("FATAL ACTION: Reset registry to factory defaults?")) return;
+    if (!window.confirm("RESET REGISTRY TO FACTORY DEFAULTS?")) return;
     await AsyncStorage.clear();
     setUsers(MOCK_USERS);
     setAllFiles(MOCK_FILES);
     setNotices(MOCK_NOTICES);
     setMessages(MOCK_MESSAGES);
-    alert("Registry Reset Successful.");
+    alert("Registry Purged.");
   };
 
   const handleLogin = (u: User) => { 
@@ -225,13 +214,6 @@ const App: React.FC = () => {
     sessionStorage.removeItem('DIN_SESSION_USER'); 
     setCurrentPage('login'); 
     setSelectedFile(null); 
-  };
-
-  const handleProfileUpdate = (updatedUser: User) => {
-    const updatedUsers = users.map(u => u.id === updatedUser.id ? updatedUser : u);
-    setUsers(updatedUsers);
-    setUser(updatedUser);
-    sessionStorage.setItem('DIN_SESSION_USER', JSON.stringify(updatedUser));
   };
 
   const userCnicNormalized = useMemo(() => user?.cnic.replace(/[^0-9X]/g, '') || '', [user]);
@@ -253,13 +235,14 @@ const App: React.FC = () => {
   }, [userFiles]);
 
   if (isLoading) return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-center">
       <div className="w-16 h-16 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-6"></div>
-      <h2 className="text-white font-black uppercase tracking-[0.3em] text-sm">Verifying Local Registry</h2>
+      <h2 className="text-white font-black uppercase tracking-[0.3em] text-sm">Synchronizing Registry</h2>
+      <p className="text-slate-500 text-[10px] font-bold uppercase mt-2">Authenticating Node Connection</p>
     </div>
   );
 
-  if (!user) return <LoginPage onLogin={handleLogin} users={users} onRegister={(u) => setUsers([...users, u])} />;
+  if (!user) return <LoginPage onLogin={handleLogin} users={users} onRegister={(u) => handleUpdateUsers([...users, u])} />;
 
   const visibleMessages = messages.filter(m => user.role === 'ADMIN' || m.receiverId === user.id || m.receiverId === 'ALL' || m.senderId === user.id);
   const unreadCount = visibleMessages.filter(m => !m.isRead && m.receiverId === user.id).length;
@@ -283,19 +266,12 @@ const App: React.FC = () => {
       case 'property': return <PropertyPortal allFiles={allFiles} setAllFiles={handleUpdateFiles} onPreviewStatement={setSelectedFile} />;
       case 'notices': return <PublicNotices notices={notices} />;
       case 'alerts': return <NewsAlerts />;
-      case 'inbox': return <Inbox messages={visibleMessages} setMessages={handleUpdateMessages} currentUser={user} onSendMessage={(m) => setMessages([m, ...messages])} users={users} initialPartnerId={initialChatPartnerId} />;
+      case 'inbox': return <Inbox messages={visibleMessages} setMessages={setMessages} currentUser={user} onSendMessage={(m) => handleUpdateMessages(prev => [m, ...prev])} users={users} initialPartnerId={initialChatPartnerId} />;
       case 'sops': return <SOPs />;
-      case 'profile': return <Profile user={user} onUpdate={handleProfileUpdate} />;
-      // Fix: Corrected function name from handleMassMassImport to handleMassImport
-      case 'admin': return <AdminPortal users={users} setUsers={handleUpdateUsers} notices={notices} setNotices={setNotices} allFiles={allFiles} setAllFiles={handleUpdateFiles} messages={messages} onSendMessage={(m) => setMessages([m, ...messages])} onImportFullDatabase={handleMassImport} onResetDatabase={handleResetDatabase} onSwitchToChat={(id) => { setInitialChatPartnerId(id); setCurrentPage('inbox'); }} onPreviewStatement={setSelectedFile} />;
+      case 'profile': return <Profile user={user} onUpdate={(u) => { setUsers(users.map(old => old.id === u.id ? u : old)); setUser(u); }} />;
+      case 'admin': return <AdminPortal users={users} setUsers={handleUpdateUsers} notices={notices} setNotices={setNotices} allFiles={allFiles} setAllFiles={handleUpdateFiles} messages={messages} onSendMessage={(m) => handleUpdateMessages(prev => [m, ...prev])} onImportFullDatabase={handleMassImport} onResetDatabase={handleResetDatabase} onSwitchToChat={(id) => { setInitialChatPartnerId(id); setCurrentPage('inbox'); }} onPreviewStatement={setSelectedFile} />;
       default: return <Dashboard onSelectFile={setSelectedFile} files={userFiles} userName={user.name} />;
     }
-  };
-
-  const handleSidebarNav = (id: string) => {
-    if (id === 'statement' && userFiles.length > 0) setSelectedFile(userFiles[0]);
-    else { setCurrentPage(id); setSelectedFile(null); }
-    if (window.innerWidth < 1024) setIsSidebarOpen(false); 
   };
 
   return (
@@ -306,7 +282,7 @@ const App: React.FC = () => {
           <div className="p-8 border-b flex items-center justify-between font-black text-xl tracking-tighter">DIN PROPERTIES</div>
           <nav className="flex-1 overflow-y-auto p-4 space-y-1.5 custom-scrollbar">
             {navItems.map((item) => (
-              <button key={item.id} onClick={() => handleSidebarNav(item.id)} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${((currentPage === item.id && !selectedFile) || (item.id === 'statement' && selectedFile)) ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-slate-50'}`}>
+              <button key={item.id} onClick={() => { setCurrentPage(item.id); setSelectedFile(null); if (window.innerWidth < 1024) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${currentPage === item.id ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-slate-50'}`}>
                 <item.icon size={20} /> <span className="flex-1 text-left">{item.label}</span>
                 {item.badge ? <span className="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black">{item.badge}</span> : null}
               </button>
@@ -314,7 +290,7 @@ const App: React.FC = () => {
           </nav>
           <div className="p-6 border-t space-y-4">
             {isSyncing && <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl animate-pulse text-[10px] font-black uppercase"><RefreshCw size={14} className="animate-spin" /> Syncing Node</div>}
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-black text-red-600 hover:bg-red-50"><LogOut size={20} /> Terminate</button>
+            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-black text-red-600 hover:bg-red-50 transition-colors"><LogOut size={20} /> Terminate</button>
           </div>
         </div>
       </aside>
