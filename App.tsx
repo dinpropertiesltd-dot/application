@@ -120,34 +120,34 @@ const App: React.FC = () => {
     const initData = async () => {
       setIsLoading(true);
       try {
+        // ALWAYS LOAD FROM LOCAL STORAGE FIRST
+        const u = await AsyncStorage.getItem('DIN_PORTAL_USERS');
+        const f = await AsyncStorage.getItem('DIN_PORTAL_FILES');
+        const n = await AsyncStorage.getItem('DIN_PORTAL_NOTICES');
+        const m = await AsyncStorage.getItem('DIN_PORTAL_MESSAGES');
+        
+        if (u) setUsers(u); 
+        if (f) setAllFiles(f); 
+        if (n) setNotices(n); 
+        if (m) setMessages(m);
+
         const sessionStr = sessionStorage.getItem('DIN_SESSION_USER');
         const savedSession = sessionStr ? JSON.parse(sessionStr) : null;
         
+        // THEN TRY CLOUD IF ENABLED, BUT DON'T OVERWRITE WITH EMPTY DATA
         if (isCloudEnabled && supabase) {
           const { data: usersData } = await supabase.from('profiles').select('*');
           const { data: filesData } = await supabase.from('property_files').select('*');
-          const { data: noticesData } = await supabase.from('notices').select('*');
-          const { data: messagesData } = await supabase.from('messages').select('*');
           
           if (usersData?.length) setUsers(usersData);
           if (filesData?.length) setAllFiles(filesData);
-          if (noticesData?.length) setNotices(noticesData);
-          if (messagesData?.length) setMessages(messagesData);
-          
+
           if (savedSession) {
-            const active = (usersData || MOCK_USERS).find(u => u.id === savedSession.id);
+            const active = (usersData || u || MOCK_USERS).find(usr => usr.id === savedSession.id);
             if (active) setUser(active);
           }
-        } else {
-          const u = await AsyncStorage.getItem('DIN_PORTAL_USERS');
-          const f = await AsyncStorage.getItem('DIN_PORTAL_FILES');
-          const n = await AsyncStorage.getItem('DIN_PORTAL_NOTICES');
-          const m = await AsyncStorage.getItem('DIN_PORTAL_MESSAGES');
-          if (u) setUsers(u); 
-          if (f) setAllFiles(f); 
-          if (n) setNotices(n); 
-          if (m) setMessages(m);
-          if (savedSession) setUser(savedSession);
+        } else if (savedSession) {
+          setUser(savedSession);
         }
       } catch (err) { 
         console.error("Initialization Error:", err); 
@@ -159,7 +159,9 @@ const App: React.FC = () => {
   }, []);
 
   const syncToCloud = useCallback(async (table: string, data: any) => {
+    // ALWAYS SAVE TO LOCAL STORAGE
     await AsyncStorage.setItem(`DIN_PORTAL_${table.toUpperCase()}`, data);
+    
     if (!isCloudEnabled || !supabase) return;
     setIsSyncing(true);
     try {
@@ -209,6 +211,7 @@ const App: React.FC = () => {
 
     setUsers(nextUsers);
     setAllFiles(nextFiles);
+    // CRITICAL: Ensure sync is called for both users and files
     syncToCloud('users', nextUsers);
     syncToCloud('files', nextFiles);
   }, [users, allFiles, syncToCloud]);
